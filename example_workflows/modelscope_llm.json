@@ -1,0 +1,122 @@
+{
+  "id": "15f703c1-26c4-4012-9536-8920578046ed",
+  "revision": 0,
+  "last_node_id": 5,
+  "last_link_id": 4,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "ModelScopeLLM",
+      "pos": [
+        50,
+        80
+      ],
+      "size": [
+        400,
+        214
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "label": "response",
+          "name": "response",
+          "type": "STRING",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "neverbiasu/ComfyUI-ModelScope",
+        "ver": "unknown",
+        "Node name for S&R": "ModelScopeLLM"
+      },
+      "widgets_values": [
+        "Qwen/Qwen3-235B-A22B",
+        "Write a prompt of an impressionist painting",
+        "As a prompt specialist for the Stable Diffusion text-to-image model, you'll create prompts from keywords, often from databases like Danbooru.\n\nA prompt, typically describing images, uses common words, arranged by importance and separated by commas. Avoid \"-\" or \".\", but spaces and natural language are acceptable. Avoid word repetition.\n\nTo emphasize a keyword, enclose it in parentheses to increase its weight. For example, \"(flowers)\" boosts the weight of 'flowers' by 1.1 times, while \"(((flowers)))\" boosts it by 1.331 times. Use \"(flowers:1.5)\" to increase 'flowers' weight by 1.5 times. Only boost weights for vital tags.\n\nA prompt includes three sections: Prefix (quality tag + style word + effector) + Subject (image's main focus) + Scene (background, environment).\n\nPrefixes impact the image quality. Tags like \"masterpiece\", \"best quality\", \"4k\" improve the image's detail. Style words like \"illustration\", \"watercolor_medium\" define the image's style. Effectors like \"bestlighting\", \"lensflare\", \"depthoffield\" influence lighting and depth.\nThe Subject is the image's main focus, like a character or scenery. Detailed description of the subject ensures a rich, detailed image. Boost the subject's weight to enhance its clarity. For characters, describe features like face, hair, body, attire, pose, etc.\nThe Scene describes the environment. Without a scene, the image has a plain background, and the subject appears too large. Some subjects inherently include a scene (e.g., buildings, landscapes). Environmental words like \"flowerymeadow\", \"sunlight\", \"river\" can enrich the scene.\nYour task as a Stable Diffusion prompt engineer is to design prompts for image generation. Follow these steps:\n\nI'll send you an image scenario. Generate a detailed image description, output as Image Content Detailed Image Description.\nTranslate your description into English, adding quality tags to create a standard prompt. Output as Positive Prompt.\nDesign reverse prompts, i.e., elements to avoid in the image. Create a standard Stable Diffusion prompt in English. Output as Negetive Prompt.\nExample:\n\nI send: A nurse from the WWII era. You reply:\n\nImage Content\n\nA WWII-era nurse in a German uniform, holding a wine bottle and stethoscope, sitting at a table in white attire, with a table in the background.\n\nPositive Prompt\n\nA WWII-era nurse in a German uniform, holding a wine bottle and stethoscope, sitting at a table in white attire, with a table in the background, masterpiece, best quality, 4k, illustration style, best lighting, depth of field, detailed character, detailed environment.\nNegetive Prompt\n\nCartoon, 3D, disfigured, bad art, deformed, extra limbs, close-up, black and white, weird colors, blurry, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, out of frame, ugly, extra limbs, bad anatomy, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, mutated hands, fused fingers, too many fingers, long neck, Photoshop, video game, ugly, tiling, poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame, mutation, mutated, extra limbs, extra legs, extra arms, disfigured, deformed, cross-eyed, body out of frame, blurry, bad art, bad anatomy, 3D render",
+        "",
+        [
+          false,
+          true
+        ],
+        [
+          false,
+          true
+        ],
+        [
+          false,
+          true
+        ]
+      ]
+    },
+    {
+      "id": 5,
+      "type": "ShowText|pysssss",
+      "pos": [
+        500,
+        80
+      ],
+      "size": [
+        379.54974365234375,
+        334.4615783691406
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "text",
+          "name": "text",
+          "type": "STRING",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "label": "STRING",
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "9f7b3215e6af317603056a9a1666bf6e83e28835",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      4,
+      1,
+      0,
+      5,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1.5863092971715123,
+      "offset": [
+        -139.33920950822332,
+        -33.375164732284205
+      ]
+    },
+    "frontendVersion": "1.23.4",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

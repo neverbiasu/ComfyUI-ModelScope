@@ -1,0 +1,115 @@
+{
+  "id": "af8d3d4b-2fcf-452f-8814-3a495cd7e314",
+  "revision": 0,
+  "last_node_id": 5,
+  "last_link_id": 4,
+  "nodes": [
+    {
+      "id": 2,
+      "type": "SaveImage",
+      "pos": [
+        500,
+        80
+      ],
+      "size": [
+        270,
+        270
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.48"
+      },
+      "widgets_values": [
+        "modelscope"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "ModelScopeImageGenerator",
+      "pos": [
+        50,
+        80
+      ],
+      "size": [
+        400,
+        286
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "label": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "neverbiasu/ComfyUI-ModelScope",
+        "ver": "unknown",
+        "Node name for S&R": "ModelScopeImageGenerator"
+      },
+      "widgets_values": [
+        "ModelE/uz_uzru0428",
+        "chibi, digital art, anime style, cute, female, pink hair, short hair, bangs, white skin, blue dress, white shoes, red ribbon, small horns, surprised expression, open mouth, floating particles, red swirl, white background, simple background, walking, left side, small body, big head, round eyes, blush, small nose, Japanese anime, kawaii, soft colors, minimalistic, clean lines, character design, fantasy element, small wings, pink wings, floating, simplistic, illustration, flat colors, round cheeks, small hands, black outline, white border, isolated character, child-like, fantasy creature, whimsical, playful, adorable, minimalist style",
+        "",
+        30,
+        3.5,
+        1024,
+        1024,
+        "",
+        [
+          false,
+          true
+        ],
+        [
+          false,
+          true
+        ]
+      ]
+    }
+  ],
+  "links": [
+    [
+      4,
+      5,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1.7449402268886616,
+      "offset": [
+        95.11570741024394,
+        20.84225143684259
+      ]
+    },
+    "frontendVersion": "1.23.4",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
