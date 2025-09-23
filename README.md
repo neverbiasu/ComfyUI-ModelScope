@@ -60,7 +60,7 @@ Use the ModelScope LLM node to generate creative text, answer questions, or perf
 Analyze images and answer questions about their content using advanced vision-language models.
 
 ### Text-to-Image Generation Workflow
-![Image Generation workflow](example_workflows/modelscope_image_generation.png)
+![Image Generation workflow](example_workflows/modelscope_image_generator.png)
 Generate custom images from text descriptions with fine-tuned control over output parameters.
 
 ## Related Links
