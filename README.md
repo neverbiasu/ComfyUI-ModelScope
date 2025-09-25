@@ -1,5 +1,9 @@
 # ComfyUI-ModelScope
 
+<p align="center">
+  <img src="assets/logo.png" alt="ComfyUI-ModelScope Logo" width="240" />
+</p>
+
 A ComfyUI custom node package for ModelScope API integration, providing seamless access to ModelScope's powerful AI models including Large Language Models (LLM), Vision-Language Models (VLM), and Image Generation capabilities.
 
 ## About ModelScope
