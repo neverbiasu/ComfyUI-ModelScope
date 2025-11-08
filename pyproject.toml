@@ -1,5 +1,5 @@
 [project]
-name = "modelscope"
+name = "comfyui-modelscope"
 description = "A ComfyUI custom node package for ModelScope API integration, providing seamless access to ModelScope's powerful AI models including Large Language Models (LLM), Vision-Language Models (VLM), and Image Generation capabilities."
 version = "1.0.0"
 license = {file = "LICENSE"} 
@@ -29,9 +29,9 @@ Documentation = "https://github.com/neverbiasu/ComfyUI-ModelScope/wiki"
 "Bug Tracker" = "https://github.com/neverbiasu/ComfyUI-ModelScope/issues"
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "faych"
 DisplayName = "ComfyUI-ModelScope"
-Icon = ""
+Icon = "https://raw.githubusercontent.com/neverbiasu/ComfyUI-ModelScope/master/assets/logo.png"
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
 
