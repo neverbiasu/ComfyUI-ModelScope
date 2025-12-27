@@ -11,6 +11,11 @@ MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY") or os.getenv("MODELSCOPE_AC
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful and harmless assistant. Answer concisely and helpfully."
 
+# Constants
+PLACEHOLDER_MODEL_ID = "Model ID"
+PLACEHOLDER_API_KEY = "API Key"
+CONTENT_TYPE_JSON = "application/json"
+
 
 class ModelScopeBase:
     """Base class for ModelScope nodes with common functionality."""
@@ -92,11 +97,11 @@ class ModelScopeBase:
             response.raise_for_status()
             
             # Get PIL Image module
-            PIL_Image = self._get_pil_image_module()
+            pil_image = self._get_pil_image_module()
             
             # Open image from bytes
             from io import BytesIO
-            image = PIL_Image.open(BytesIO(response.content))
+            image = pil_image.open(BytesIO(response.content))
             
             # Convert to RGB if necessary
             if image.mode != 'RGB':
@@ -153,7 +158,7 @@ class ModelScopeLLM(ModelScopeChatBase):
                     "STRING",
                     {
                         "default": "Qwen/Qwen3-235B-A22B",
-                        "placeholder": "Model ID",
+                        "placeholder": PLACEHOLDER_MODEL_ID,
                         "tooltip": "The ModelScope model ID to use.",
                     },
                 ),
@@ -178,7 +183,7 @@ class ModelScopeLLM(ModelScopeChatBase):
                 "api_key": (
                     "STRING",
                     {
-                        "placeholder": "API Key",
+                        "placeholder": PLACEHOLDER_API_KEY,
                         "tooltip": "ModelScope API key; if empty, read from MODELSCOPE_API_KEY env var.",
                     },
                 ),
@@ -233,7 +238,7 @@ class ModelScopeLLM(ModelScopeChatBase):
         key = self._resolve_key(api_key)
         system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         url = f"{BASE_URL}/chat/completions"
-        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": CONTENT_TYPE_JSON}
         payload = {
             "model": model_id,
             "messages": [
@@ -267,7 +272,6 @@ class ModelScopeLLM(ModelScopeChatBase):
                 headers=headers,
                 json=payload,
                 timeout=request_timeout,
-                verify=False,  # Temporary SSL workaround
             )
             resp.raise_for_status()
         except requests.Timeout as e:
@@ -317,7 +321,7 @@ class ModelScopeVLM(ModelScopeChatBase):
                     "STRING",
                     {
                         "default": "Qwen/QVQ-72B-Preview",
-                        "placeholder": "Model ID",
+                        "placeholder": PLACEHOLDER_MODEL_ID,
                         "tooltip": "ModelScope VLM model ID.",
                     },
                 ),
@@ -349,7 +353,7 @@ class ModelScopeVLM(ModelScopeChatBase):
                 "api_key": (
                     "STRING",
                     {
-                        "placeholder": "API Key",
+                        "placeholder": PLACEHOLDER_API_KEY,
                         "tooltip": "ModelScope API key. If empty, reads MODELSCOPE_API_KEY or MODELSCOPE_ACCESS_TOKEN from environment.",
                     },
                 ),
@@ -415,7 +419,7 @@ class ModelScopeVLM(ModelScopeChatBase):
         url = f"{BASE_URL}/chat/completions"
         headers = {
             "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json"
+            "Content-Type": CONTENT_TYPE_JSON
         }
         
         # Construct VLM message payload with image and text
@@ -459,7 +463,6 @@ class ModelScopeVLM(ModelScopeChatBase):
                 headers=headers,
                 json=payload,
                 timeout=request_timeout,
-                verify=False,  # Temporary SSL workaround
             )
             resp.raise_for_status()
         except requests.Timeout as e:
@@ -500,7 +503,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
                     "STRING",
                     {
                         "default": "Qwen/Qwen-Image-Edit",
-                        "placeholder": "Model ID",
+                        "placeholder": PLACEHOLDER_MODEL_ID,
                         "tooltip": "ModelScope model ID for image generation.",
                     },
                 ),
@@ -565,7 +568,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
                 "api_key": (
                     "STRING",
                     {
-                        "placeholder": "API Key",
+                        "placeholder": PLACEHOLDER_API_KEY,
                         "tooltip": "ModelScope API key. If empty, reads from MODELSCOPE_API_KEY env var.",
                     },
                 ),
@@ -612,7 +615,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
         url = f"{BASE_URL}/images/generations"
         headers = {
             "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json"
+            "Content-Type": CONTENT_TYPE_JSON
         }
         
         payload = {
@@ -625,7 +628,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
         }
 
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=60, verify=False)
+            resp = requests.post(url, headers=headers, json=payload, timeout=60)
             resp.raise_for_status()
         except requests.RequestException as e:
             raise RuntimeError(f"Network error calling ModelScope Image API: {e}") from e
