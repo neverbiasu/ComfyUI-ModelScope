@@ -18,6 +18,9 @@ PLACEHOLDER_MODEL_ID = "Model ID"
 PLACEHOLDER_API_KEY = "API Key"
 CONTENT_TYPE_JSON = "application/json"
 
+# Logger
+logger = logging.getLogger(__name__)
+
 
 class ModelScopeBase:
     """Base class for ModelScope nodes with common functionality."""
@@ -711,7 +714,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
         # Poll for up to 10 minutes (600s)
         max_wait_time = 600
         start_poll_time = time.time()
-        
+
         while time.time() - start_poll_time < max_wait_time:
             try:
                 result = requests.get(task_url, headers=poll_headers, timeout=30)
@@ -756,7 +759,6 @@ class ModelScopeImageGenerator(ModelScopeBase):
                     ) from e
 
                 # Transient network or server error during polling: log and retry.
-                logger = logging.getLogger(__name__)
                 logger.warning(f"Polling failed: {e}. Retrying...")
                 time.sleep(5)
 
