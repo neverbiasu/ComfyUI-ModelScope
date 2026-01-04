@@ -672,15 +672,14 @@ class ModelScopeImageGenerator(ModelScopeBase):
                 # Try to parse as JSON, otherwise use as string
                 try:
                     parsed_loras = json.loads(loras)
-                except json.JSONDecodeError:
-                    # Fallback to string if parsing fails
-                    payload["loras"] = loras
-                else:
                     # Only accept JSON objects (dict); otherwise, use the original string
                     if isinstance(parsed_loras, dict):
                         payload["loras"] = parsed_loras
                     else:
                         payload["loras"] = loras
+                except json.JSONDecodeError:
+                    # Fallback to string if parsing fails
+                    payload["loras"] = loras
 
         try:
             # Use ensure_ascii=False for Chinese characters support
