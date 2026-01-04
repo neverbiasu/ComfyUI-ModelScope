@@ -5,6 +5,10 @@ import time
 import requests
 import importlib
 import json
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api-inference.modelscope.cn/v1"
 
@@ -16,6 +20,7 @@ DEFAULT_SYSTEM_PROMPT = "You are a helpful and harmless assistant. Answer concis
 PLACEHOLDER_MODEL_ID = "Model ID"
 PLACEHOLDER_API_KEY = "API Key"
 CONTENT_TYPE_JSON = "application/json"
+CONTENT_TYPE_JSON_UTF8 = "application/json; charset=utf-8"
 
 
 class ModelScopeBase:
@@ -76,12 +81,12 @@ class ModelScopeBase:
         except Exception:
             raise RuntimeError("Pillow is required. Install with: pip install pillow")
 
-    def _download_image_from_url(self, url: str, headers: dict) -> object:
+    def _download_image_from_url(self, url: str, headers: Optional[dict] = None) -> object:
         """Download image from URL and convert to ComfyUI IMAGE format.
         
         Args:
             url: Image URL to download
-            headers: HTTP headers for authentication
+            headers: HTTP headers for authentication (optional)
             
         Returns:
             torch.Tensor: Image tensor in ComfyUI format [B, H, W, C]
@@ -578,6 +583,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
                 "loras": (
                     "STRING",
                     {
+                        "default": "",
                         "placeholder": '{"lora_id": 0.6} or just lora_id',
                         "tooltip": "LoRA model configuration.",
                     }
@@ -635,14 +641,11 @@ class ModelScopeImageGenerator(ModelScopeBase):
         key = self._resolve_key(api_key)
         # Note: AIGC API uses base_url without /v1/ suffix for the base,
         # but the endpoint is /v1/images/generations.
-        # BASE_URL is https://api-inference.modelscope.cn/v1
-        # so BASE_URL + "/images/generations" -> .../v1/images/generations
-        # which matches the doc: https://api-inference.modelscope.cn/v1/images/generations
         url = f"{BASE_URL}/images/generations"
 
         headers = {
             "Authorization": f"Bearer {key}",
-            "Content-Type": CONTENT_TYPE_JSON,
+            "Content-Type": CONTENT_TYPE_JSON_UTF8,
             "X-ModelScope-Async-Mode": "true"
         }
         
@@ -664,14 +667,14 @@ class ModelScopeImageGenerator(ModelScopeBase):
         if loras:
             loras = loras.strip()
             if loras:
-                # Try to parse as JSON, otherwise use as string
-                if loras.startswith('{'):
-                    try:
-                        payload["loras"] = json.loads(loras)
-                    except json.JSONDecodeError:
-                        # Fallback to string if parsing fails
+                try:
+                    parsed_loras = json.loads(loras)
+                    if isinstance(parsed_loras, dict):
+                        payload["loras"] = parsed_loras
+                    else:
                         payload["loras"] = loras
-                else:
+                except json.JSONDecodeError:
+                    # Not valid JSON, treat as string ID
                     payload["loras"] = loras
 
         try:
@@ -684,16 +687,14 @@ class ModelScopeImageGenerator(ModelScopeBase):
 
         try:
             data = resp.json()
-            task_id = data.get("task_id")
         except Exception as e:
-            raise RuntimeError(f"Failed to parse API response or missing task_id: {e}") from e
+            raise RuntimeError(f"Failed to parse API response: {e}") from e
 
+        task_id = data.get("task_id")
         if not task_id:
-             raise RuntimeError(f"No task_id returned from async request: {data}")
+            raise RuntimeError(f"No task_id returned from async request. Response: {data}")
 
         # Poll for status
-        # BASE_URL is .../v1
-        # Task endpoint: .../v1/tasks/{task_id}
         task_url = f"{BASE_URL}/tasks/{task_id}"
         poll_headers = {
             "Authorization": f"Bearer {key}",
@@ -701,9 +702,12 @@ class ModelScopeImageGenerator(ModelScopeBase):
             "X-ModelScope-Task-Type": "image_generation"
         }
 
-        # Poll for up to 10 minutes (600s)
-        max_retries = 120
-        for _ in range(max_retries):
+        # Poll for up to 10 minutes
+        timeout_seconds = 600
+        start_time = time.time()
+        end_time = start_time + timeout_seconds
+
+        while time.time() < end_time:
             try:
                 result = requests.get(task_url, headers=poll_headers, timeout=30)
                 result.raise_for_status()
@@ -714,12 +718,18 @@ class ModelScopeImageGenerator(ModelScopeBase):
                     output_images = task_data.get("output_images")
                     if output_images and len(output_images) > 0:
                         image_url = output_images[0]
-                        return (self._download_image_from_url(image_url, headers),)
+                        # Use clean headers for download (only auth)
+                        download_headers = {"Authorization": f"Bearer {key}"}
+                        return (self._download_image_from_url(image_url, download_headers),)
                     else:
-                        raise RuntimeError(f"Task succeeded but no output images found: {task_data}")
+                        raise RuntimeError(
+                            f"Task succeeded but no output images found. Status: {status}"
+                        )
 
                 elif status == "FAILED":
-                    raise RuntimeError(f"Image Generation Failed: {task_data}")
+                    # Sanitize error message
+                    error_msg = task_data.get("message") or "Unknown error"
+                    raise RuntimeError(f"Image Generation Failed: {error_msg}")
 
                 elif status in ["PENDING", "RUNNING"]:
                     time.sleep(5)
@@ -727,11 +737,19 @@ class ModelScopeImageGenerator(ModelScopeBase):
 
                 else:
                     # Unknown status, wait and retry
+                    logger.warning(f"Unknown task status '{status}'. Retrying...")
                     time.sleep(5)
 
             except requests.RequestException as e:
-                # Transient network error during polling?
-                print(f"Warning: Polling failed: {e}. Retrying...")
+                # Check for permanent errors (4xx)
+                status_code = getattr(getattr(e, "response", None), "status_code", None)
+                if status_code and 400 <= status_code < 500:
+                    raise RuntimeError(
+                        f"Image generation polling failed with client error {status_code}: {e}"
+                    ) from e
+
+                # Transient network error
+                logger.warning(f"Polling failed: {e}. Retrying...")
                 time.sleep(5)
 
         raise RuntimeError("Image generation timed out after polling.")
