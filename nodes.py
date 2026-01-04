@@ -4,6 +4,7 @@ import os
 import time
 import requests
 import importlib
+import json
 
 BASE_URL = "https://api-inference.modelscope.cn/v1"
 
@@ -525,7 +526,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
                         "tooltip": "Negative prompt to avoid unwanted elements.",
                     },
                 ),
-                "num_inference_steps": (
+                "steps": (
                     "INT",
                     {
                         "default": 30,
@@ -535,7 +536,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
                         "tooltip": "Number of denoising steps (higher = better quality, slower).",
                     },
                 ),
-                "guidance_scale": (
+                "guidance": (
                     "FLOAT",
                     {
                         "default": 3.5,
@@ -543,6 +544,15 @@ class ModelScopeImageGenerator(ModelScopeBase):
                         "max": 20.0,
                         "step": 0.1,
                         "tooltip": "How closely to follow the prompt (higher = more adherent).",
+                    },
+                ),
+                "seed": (
+                    "INT",
+                    {
+                        "default": 1234,
+                        "min": 0,
+                        "max": 0xffffffffffffffff,
+                        "tooltip": "Random seed for reproducibility.",
                     },
                 ),
                 "height": (
@@ -564,6 +574,13 @@ class ModelScopeImageGenerator(ModelScopeBase):
                         "step": 8,
                         "tooltip": "Generated image width in pixels.",
                     },
+                ),
+                "loras": (
+                    "STRING",
+                    {
+                        "placeholder": '{"lora_id": 0.6} or just lora_id',
+                        "tooltip": "LoRA model configuration.",
+                    }
                 ),
                 "api_key": (
                     "STRING",
@@ -588,10 +605,12 @@ class ModelScopeImageGenerator(ModelScopeBase):
         prompt: str,
         api_key: Optional[str] = None,
         negative_prompt: Optional[str] = None,
-        num_inference_steps: int = 30,
-        guidance_scale: float = 3.5,
+        steps: int = 30,
+        guidance: float = 3.5,
+        seed: Optional[int] = None,
         height: int = 1024,
         width: int = 1024,
+        loras: Optional[str] = None,
     ) -> Tuple[object]:
         """Generate image using ModelScope API.
         
@@ -600,10 +619,12 @@ class ModelScopeImageGenerator(ModelScopeBase):
             prompt: Text description of desired image
             api_key: Optional API key override
             negative_prompt: Elements to avoid in generation
-            num_inference_steps: Number of denoising steps
-            guidance_scale: Adherence to prompt
+            steps: Number of denoising steps
+            guidance: Adherence to prompt
+            seed: Random seed
             height: Image height in pixels
             width: Image width in pixels
+            loras: LoRA configuration string (ID or JSON)
             
         Returns:
             tuple: Single-element tuple containing image tensor
@@ -612,39 +633,108 @@ class ModelScopeImageGenerator(ModelScopeBase):
             RuntimeError: If API call or image processing fails
         """
         key = self._resolve_key(api_key)
+        # Note: AIGC API uses base_url without /v1/ suffix for the base,
+        # but the endpoint is /v1/images/generations.
+        # BASE_URL is https://api-inference.modelscope.cn/v1
+        # so BASE_URL + "/images/generations" -> .../v1/images/generations
+        # which matches the doc: https://api-inference.modelscope.cn/v1/images/generations
         url = f"{BASE_URL}/images/generations"
+
         headers = {
             "Authorization": f"Bearer {key}",
-            "Content-Type": CONTENT_TYPE_JSON
+            "Content-Type": CONTENT_TYPE_JSON,
+            "X-ModelScope-Async-Mode": "true"
         }
         
         payload = {
             "model": model_id,
             "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "num_inference_steps": num_inference_steps,
-            "guidance_scale": guidance_scale,
             "size": f"{width}x{height}", 
         }
 
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+        if steps is not None:
+            payload["steps"] = steps
+        if guidance is not None:
+            payload["guidance"] = guidance
+        if seed is not None:
+            payload["seed"] = seed
+
+        if loras:
+            loras = loras.strip()
+            if loras:
+                # Try to parse as JSON, otherwise use as string
+                if loras.startswith('{'):
+                    try:
+                        payload["loras"] = json.loads(loras)
+                    except json.JSONDecodeError:
+                        # Fallback to string if parsing fails
+                        payload["loras"] = loras
+                else:
+                    payload["loras"] = loras
+
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=60)
+            # Use ensure_ascii=False for Chinese characters support
+            data_bytes = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+            resp = requests.post(url, headers=headers, data=data_bytes, timeout=60)
             resp.raise_for_status()
         except requests.RequestException as e:
             raise RuntimeError(f"Network error calling ModelScope Image API: {e}") from e
 
         try:
             data = resp.json()
+            task_id = data.get("task_id")
         except Exception as e:
-            raise RuntimeError(f"Failed to parse API response: {e}") from e
+            raise RuntimeError(f"Failed to parse API response or missing task_id: {e}") from e
 
-        # Handle direct image URL response
-        if data.get("images"):
-            first_image = data["images"][0]
-            if isinstance(first_image, dict) and first_image.get("url"):
-                return (self._download_image_from_url(first_image["url"], headers),)
+        if not task_id:
+             raise RuntimeError(f"No task_id returned from async request: {data}")
 
-        raise RuntimeError(f"Unable to locate generated image in response: {data}")
+        # Poll for status
+        # BASE_URL is .../v1
+        # Task endpoint: .../v1/tasks/{task_id}
+        task_url = f"{BASE_URL}/tasks/{task_id}"
+        poll_headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": CONTENT_TYPE_JSON,
+            "X-ModelScope-Task-Type": "image_generation"
+        }
+
+        # Poll for up to 10 minutes (600s)
+        max_retries = 120
+        for _ in range(max_retries):
+            try:
+                result = requests.get(task_url, headers=poll_headers, timeout=30)
+                result.raise_for_status()
+                task_data = result.json()
+
+                status = task_data.get("task_status")
+                if status == "SUCCEED":
+                    output_images = task_data.get("output_images")
+                    if output_images and len(output_images) > 0:
+                        image_url = output_images[0]
+                        return (self._download_image_from_url(image_url, headers),)
+                    else:
+                        raise RuntimeError(f"Task succeeded but no output images found: {task_data}")
+
+                elif status == "FAILED":
+                    raise RuntimeError(f"Image Generation Failed: {task_data}")
+
+                elif status in ["PENDING", "RUNNING"]:
+                    time.sleep(5)
+                    continue
+
+                else:
+                    # Unknown status, wait and retry
+                    time.sleep(5)
+
+            except requests.RequestException as e:
+                # Transient network error during polling?
+                print(f"Warning: Polling failed: {e}. Retrying...")
+                time.sleep(5)
+
+        raise RuntimeError("Image generation timed out after polling.")
 
 
 NODE_CLASS_MAPPINGS = {
