@@ -5,6 +5,7 @@ import time
 import requests
 import importlib
 import json
+import logging
 
 BASE_URL = "https://api-inference.modelscope.cn/v1"
 
@@ -681,7 +682,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
         try:
             # Use ensure_ascii=False for Chinese characters support
             data_bytes = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-            headers_with_charset = dict(headers)
+            headers_with_charset = headers.copy()
             headers_with_charset["Content-Type"] = "application/json; charset=utf-8"
             resp = requests.post(url, headers=headers_with_charset, data=data_bytes, timeout=60)
             resp.raise_for_status()
@@ -755,7 +756,6 @@ class ModelScopeImageGenerator(ModelScopeBase):
                     ) from e
 
                 # Transient network or server error during polling: log and retry.
-                import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Polling failed: {e}. Retrying...")
                 time.sleep(5)
