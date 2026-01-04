@@ -578,6 +578,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
                 "loras": (
                     "STRING",
                     {
+                        "default": "",
                         "placeholder": '{"lora_id": 0.6} or just lora_id',
                         "tooltip": "LoRA model configuration.",
                     }
@@ -665,31 +666,36 @@ class ModelScopeImageGenerator(ModelScopeBase):
             loras = loras.strip()
             if loras:
                 # Try to parse as JSON, otherwise use as string
-                if loras.startswith('{'):
-                    try:
-                        payload["loras"] = json.loads(loras)
-                    except json.JSONDecodeError:
-                        # Fallback to string if parsing fails
-                        payload["loras"] = loras
-                else:
+                try:
+                    parsed_loras = json.loads(loras)
+                except json.JSONDecodeError:
+                    # Fallback to string if parsing fails
                     payload["loras"] = loras
+                else:
+                    # Only accept JSON objects (dict); otherwise, use the original string
+                    if isinstance(parsed_loras, dict):
+                        payload["loras"] = parsed_loras
+                    else:
+                        payload["loras"] = loras
 
         try:
             # Use ensure_ascii=False for Chinese characters support
             data_bytes = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-            resp = requests.post(url, headers=headers, data=data_bytes, timeout=60)
+            headers_with_charset = dict(headers)
+            headers_with_charset["Content-Type"] = "application/json; charset=utf-8"
+            resp = requests.post(url, headers=headers_with_charset, data=data_bytes, timeout=60)
             resp.raise_for_status()
         except requests.RequestException as e:
             raise RuntimeError(f"Network error calling ModelScope Image API: {e}") from e
 
         try:
             data = resp.json()
-            task_id = data.get("task_id")
         except Exception as e:
-            raise RuntimeError(f"Failed to parse API response or missing task_id: {e}") from e
+            raise RuntimeError(f"Failed to parse API response as JSON: {e}") from e
 
+        task_id = data.get("task_id")
         if not task_id:
-             raise RuntimeError(f"No task_id returned from async request: {data}")
+            raise RuntimeError(f"No task_id returned from async request: {data}")
 
         # Poll for status
         # BASE_URL is .../v1
@@ -702,8 +708,10 @@ class ModelScopeImageGenerator(ModelScopeBase):
         }
 
         # Poll for up to 10 minutes (600s)
-        max_retries = 120
-        for _ in range(max_retries):
+        max_wait_time = 600
+        start_poll_time = time.time()
+        
+        while time.time() - start_poll_time < max_wait_time:
             try:
                 result = requests.get(task_url, headers=poll_headers, timeout=30)
                 result.raise_for_status()
@@ -714,24 +722,42 @@ class ModelScopeImageGenerator(ModelScopeBase):
                     output_images = task_data.get("output_images")
                     if output_images and len(output_images) > 0:
                         image_url = output_images[0]
-                        return (self._download_image_from_url(image_url, headers),)
+                        download_headers = {"Authorization": f"Bearer {key}"} if key else None
+                        return (self._download_image_from_url(image_url, download_headers),)
                     else:
-                        raise RuntimeError(f"Task succeeded but no output images found: {task_data}")
+                        raise RuntimeError(
+                            f"Task succeeded but no output images found (status={status}, "
+                            f"output_count={len(output_images) if output_images is not None else 0})"
+                        )
 
                 elif status == "FAILED":
-                    raise RuntimeError(f"Image Generation Failed: {task_data}")
+                    error_message = task_data.get("error_message") or task_data.get("message") or "Unknown error"
+                    error_code = task_data.get("error_code") or task_data.get("code")
+                    details = f", code={error_code}" if error_code is not None else ""
+                    raise RuntimeError(f"Image generation failed (status={status}{details}): {error_message}")
 
                 elif status in ["PENDING", "RUNNING"]:
                     time.sleep(5)
                     continue
 
                 else:
-                    # Unknown status, wait and retry
-                    time.sleep(5)
+                    # Unknown status: fail fast with a clear error
+                    raise RuntimeError(f"Unknown task status '{status}' received from API: {task_data}")
 
             except requests.RequestException as e:
-                # Transient network error during polling?
-                print(f"Warning: Polling failed: {e}. Retrying...")
+                # Distinguish permanent HTTP errors (4xx) from transient issues.
+                status_code = getattr(getattr(e, "response", None), "status_code", None)
+                if status_code is not None and 400 <= status_code < 500:
+                    # Client errors are typically permanent for this task; fail fast.
+                    raise RuntimeError(
+                        f"Image generation polling failed with client error {status_code}: "
+                        f"{getattr(e.response, 'text', '')}"
+                    ) from e
+
+                # Transient network or server error during polling: log and retry.
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Polling failed: {e}. Retrying...")
                 time.sleep(5)
 
         raise RuntimeError("Image generation timed out after polling.")
