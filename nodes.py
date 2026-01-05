@@ -7,9 +7,6 @@ import importlib
 import json
 import logging
 
-# Set up logging
-logger = logging.getLogger(__name__)
-
 BASE_URL = "https://api-inference.modelscope.cn/v1"
 
 MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY") or os.getenv("MODELSCOPE_ACCESS_TOKEN")
@@ -21,6 +18,9 @@ PLACEHOLDER_MODEL_ID = "Model ID"
 PLACEHOLDER_API_KEY = "API Key"
 CONTENT_TYPE_JSON = "application/json"
 CONTENT_TYPE_JSON_UTF8 = "application/json; charset=utf-8"
+
+# Logger
+logger = logging.getLogger(__name__)
 
 
 class ModelScopeBase:
@@ -667,20 +667,24 @@ class ModelScopeImageGenerator(ModelScopeBase):
         if loras:
             loras = loras.strip()
             if loras:
+                # Try to parse as JSON, otherwise use as string
                 try:
                     parsed_loras = json.loads(loras)
+                    # Only accept JSON objects (dict); otherwise, use the original string
                     if isinstance(parsed_loras, dict):
                         payload["loras"] = parsed_loras
                     else:
                         payload["loras"] = loras
                 except json.JSONDecodeError:
-                    # Not valid JSON, treat as string ID
+                    # Fallback to string if parsing fails
                     payload["loras"] = loras
 
         try:
             # Use ensure_ascii=False for Chinese characters support
             data_bytes = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-            resp = requests.post(url, headers=headers, data=data_bytes, timeout=60)
+            headers_with_charset = headers.copy()
+            headers_with_charset["Content-Type"] = "application/json; charset=utf-8"
+            resp = requests.post(url, headers=headers_with_charset, data=data_bytes, timeout=60)
             resp.raise_for_status()
         except requests.RequestException as e:
             raise RuntimeError(f"Network error calling ModelScope Image API: {e}") from e
@@ -688,11 +692,11 @@ class ModelScopeImageGenerator(ModelScopeBase):
         try:
             data = resp.json()
         except Exception as e:
-            raise RuntimeError(f"Failed to parse API response: {e}") from e
+            raise RuntimeError(f"Failed to parse API response as JSON: {e}") from e
 
         task_id = data.get("task_id")
         if not task_id:
-            raise RuntimeError(f"No task_id returned from async request. Response: {data}")
+            raise RuntimeError(f"No task_id returned from async request: {data}")
 
         # Poll for status
         task_url = f"{BASE_URL}/tasks/{task_id}"
@@ -702,12 +706,11 @@ class ModelScopeImageGenerator(ModelScopeBase):
             "X-ModelScope-Task-Type": "image_generation"
         }
 
-        # Poll for up to 10 minutes
-        timeout_seconds = 600
-        start_time = time.time()
-        end_time = start_time + timeout_seconds
+        # Poll for up to 10 minutes (600s)
+        max_wait_time = 600
+        start_poll_time = time.time()
 
-        while time.time() < end_time:
+        while time.time() - start_poll_time < max_wait_time:
             try:
                 result = requests.get(task_url, headers=poll_headers, timeout=30)
                 result.raise_for_status()
@@ -718,37 +721,39 @@ class ModelScopeImageGenerator(ModelScopeBase):
                     output_images = task_data.get("output_images")
                     if output_images and len(output_images) > 0:
                         image_url = output_images[0]
-                        # Use clean headers for download (only auth)
-                        download_headers = {"Authorization": f"Bearer {key}"}
+                        download_headers = {"Authorization": f"Bearer {key}"} if key else None
                         return (self._download_image_from_url(image_url, download_headers),)
                     else:
                         raise RuntimeError(
-                            f"Task succeeded but no output images found. Status: {status}"
+                            f"Task succeeded but no output images found (status={status}, "
+                            f"output_count={len(output_images) if output_images is not None else 0})"
                         )
 
                 elif status == "FAILED":
-                    # Sanitize error message
-                    error_msg = task_data.get("message") or "Unknown error"
-                    raise RuntimeError(f"Image Generation Failed: {error_msg}")
+                    error_message = task_data.get("error_message") or task_data.get("message") or "Unknown error"
+                    error_code = task_data.get("error_code") or task_data.get("code")
+                    details = f", code={error_code}" if error_code is not None else ""
+                    raise RuntimeError(f"Image generation failed (status={status}{details}): {error_message}")
 
                 elif status in ["PENDING", "RUNNING"]:
                     time.sleep(5)
                     continue
 
                 else:
-                    # Unknown status, wait and retry
-                    logger.warning(f"Unknown task status '{status}'. Retrying...")
-                    time.sleep(5)
+                    # Unknown status: fail fast with a clear error
+                    raise RuntimeError(f"Unknown task status '{status}' received from API: {task_data}")
 
             except requests.RequestException as e:
-                # Check for permanent errors (4xx)
+                # Distinguish permanent HTTP errors (4xx) from transient issues.
                 status_code = getattr(getattr(e, "response", None), "status_code", None)
-                if status_code and 400 <= status_code < 500:
+                if status_code is not None and 400 <= status_code < 500:
+                    # Client errors are typically permanent for this task; fail fast.
                     raise RuntimeError(
-                        f"Image generation polling failed with client error {status_code}: {e}"
+                        f"Image generation polling failed with client error {status_code}: "
+                        f"{getattr(e.response, 'text', '')}"
                     ) from e
 
-                # Transient network error
+                # Transient network or server error during polling: log and retry.
                 logger.warning(f"Polling failed: {e}. Retrying...")
                 time.sleep(5)
 
