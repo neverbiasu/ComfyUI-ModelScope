@@ -17,6 +17,7 @@ DEFAULT_SYSTEM_PROMPT = "You are a helpful and harmless assistant. Answer concis
 PLACEHOLDER_MODEL_ID = "Model ID"
 PLACEHOLDER_API_KEY = "API Key"
 CONTENT_TYPE_JSON = "application/json"
+CONTENT_TYPE_JSON_UTF8 = "application/json; charset=utf-8"
 
 # Logger
 logger = logging.getLogger(__name__)
@@ -80,12 +81,12 @@ class ModelScopeBase:
         except Exception:
             raise RuntimeError("Pillow is required. Install with: pip install pillow")
 
-    def _download_image_from_url(self, url: str, headers: dict) -> object:
+    def _download_image_from_url(self, url: str, headers: Optional[dict] = None) -> object:
         """Download image from URL and convert to ComfyUI IMAGE format.
         
         Args:
             url: Image URL to download
-            headers: HTTP headers for authentication
+            headers: HTTP headers for authentication (optional)
             
         Returns:
             torch.Tensor: Image tensor in ComfyUI format [B, H, W, C]
@@ -640,14 +641,11 @@ class ModelScopeImageGenerator(ModelScopeBase):
         key = self._resolve_key(api_key)
         # Note: AIGC API uses base_url without /v1/ suffix for the base,
         # but the endpoint is /v1/images/generations.
-        # BASE_URL is https://api-inference.modelscope.cn/v1
-        # so BASE_URL + "/images/generations" -> .../v1/images/generations
-        # which matches the doc: https://api-inference.modelscope.cn/v1/images/generations
         url = f"{BASE_URL}/images/generations"
 
         headers = {
             "Authorization": f"Bearer {key}",
-            "Content-Type": CONTENT_TYPE_JSON,
+            "Content-Type": CONTENT_TYPE_JSON_UTF8,
             "X-ModelScope-Async-Mode": "true"
         }
         
@@ -701,8 +699,6 @@ class ModelScopeImageGenerator(ModelScopeBase):
             raise RuntimeError(f"No task_id returned from async request: {data}")
 
         # Poll for status
-        # BASE_URL is .../v1
-        # Task endpoint: .../v1/tasks/{task_id}
         task_url = f"{BASE_URL}/tasks/{task_id}"
         poll_headers = {
             "Authorization": f"Bearer {key}",
