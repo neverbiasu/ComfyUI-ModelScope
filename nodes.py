@@ -9,9 +9,13 @@ import logging
 
 BASE_URL = "https://api-inference.modelscope.cn/v1"
 
-MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY") or os.getenv("MODELSCOPE_ACCESS_TOKEN")
+MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY") or os.getenv(
+    "MODELSCOPE_ACCESS_TOKEN"
+)
 
-DEFAULT_SYSTEM_PROMPT = "You are a helpful and harmless assistant. Answer concisely and helpfully."
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a helpful and harmless assistant. Answer concisely and helpfully."
+)
 
 # Constants
 PLACEHOLDER_MODEL_ID = "Model ID"
@@ -25,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 class ModelScopeBase:
     """Base class for ModelScope nodes with common functionality."""
-    
+
     def _resolve_key(self, api_key: Optional[str]) -> str:
         """Resolve API key from input or environment variables."""
         key = api_key or MODELSCOPE_API_KEY
@@ -37,41 +41,35 @@ class ModelScopeBase:
 
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text for ComfyUI showText node compatibility.
-        
+
         Args:
             text: Raw text string
-            
+
         Returns:
             str: Sanitized text safe for display
         """
         if not isinstance(text, str):
             text = str(text)
-        
-        # Remove or replace problematic characters
+
         import re
-        
-        # Remove null bytes and other control characters except common ones
-        text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
-        
-        # Normalize whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        # Ensure text is not empty
+
+        text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text)
+
+        text = re.sub(r"\s+", " ", text).strip()
+
         if not text:
             text = "[Empty Response]"
-        
-        # Limit length if extremely long (optional safeguard)
+
         max_length = 10000
         if len(text) > max_length:
             text = text[:max_length] + "...[truncated]"
-        
-        # Ensure proper encoding
+
         try:
-            text.encode('utf-8').decode('utf-8')
+            text.encode("utf-8").decode("utf-8")
         except UnicodeError:
             # Fallback: replace problematic characters
-            text = text.encode('utf-8', errors='replace').decode('utf-8')
-        
+            text = text.encode("utf-8", errors="replace").decode("utf-8")
+
         return text
 
     def _get_pil_image_module(self):
@@ -83,22 +81,21 @@ class ModelScopeBase:
 
     def _download_image_from_url(self, url: str, headers: Optional[dict] = None) -> object:
         """Download image from URL and convert to ComfyUI IMAGE format.
-        
+
         Args:
             url: Image URL to download
             headers: HTTP headers for authentication (optional)
             
         Returns:
             torch.Tensor: Image tensor in ComfyUI format [B, H, W, C]
-            
+
         Raises:
             RuntimeError: If download or conversion fails
         """
         try:
             import torch
             import numpy as np
-            
-            # Download image
+
             response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()
             
@@ -115,19 +112,18 @@ class ModelScopeBase:
             
             # Convert PIL to numpy array
             image_np = np.array(image).astype(np.float32) / 255.0
-            
-            # Convert to torch tensor with ComfyUI format [B, H, W, C]
+
             image_tensor = torch.from_numpy(image_np)[None,]
-            
+
             return image_tensor
-            
+
         except Exception as e:
             raise RuntimeError(f"Failed to download image: {e}") from e
 
 
 class ModelScopeChatBase(ModelScopeBase):
     """Base class for chat-based ModelScope nodes."""
-    
+
     def _extract_text(self, data: dict) -> str:
         """Extract text content from chat completion response.
         Tries to read choices[0].message.content (string or list) and falls back to str(data).
@@ -222,22 +218,21 @@ class ModelScopeLLM(ModelScopeChatBase):
         request_timeout: int = 30,
     ) -> Tuple[str]:
         """Execute text generation using ModelScope LLM.
-        
+
         Args:
             model_id: ModelScope LLM model identifier
             prompt: User text prompt for the model
             system_prompt: Optional system prompt for assistant behavior
             api_key: Optional API key override
             request_timeout: Request timeout in seconds
-            
+
         Returns:
             tuple: Single-element tuple with LLM response text
-            
+
         Raises:
             ValueError: If inputs are invalid
             RuntimeError: If API call or processing fails
         """
-        # Validate inputs
         if not prompt.strip():
             raise ValueError("Prompt cannot be empty")
 
@@ -303,13 +298,13 @@ class ModelScopeLLM(ModelScopeChatBase):
 
         elapsed = time.time() - start_time
         print(f"LLM inference completed in {elapsed:.1f}s")
-        
+
         return (text,)
 
 
 class ModelScopeVLM(ModelScopeChatBase):
     """ModelScope Visual Language Model node for image-text conversations.
-    
+
     Supports analyzing images with text prompts using ModelScope VLM models.
     Handles various image input formats and provides robust error handling.
     """
@@ -317,7 +312,7 @@ class ModelScopeVLM(ModelScopeChatBase):
     @classmethod
     def INPUT_TYPES(cls):
         """Define input types and validation rules for VLM processing.
-        
+
         Returns:
             dict: Input type definitions with validation parameters
         """
@@ -393,7 +388,7 @@ class ModelScopeVLM(ModelScopeChatBase):
         request_timeout: int = 120,
     ) -> Tuple[str]:
         """Execute vision-language model inference on image and text.
-        
+
         Args:
             model_id: ModelScope VLM model identifier
             image_url: URL of image to analyze
@@ -401,27 +396,25 @@ class ModelScopeVLM(ModelScopeChatBase):
             system_prompt: Optional system prompt for assistant behavior
             api_key: Optional API key override
             request_timeout: Request timeout in seconds
-            
+
         Returns:
             tuple: Single-element tuple with VLM response text
-            
+
         Raises:
             ValueError: If inputs are invalid
             RuntimeError: If API call or processing fails
         """
-        # Validate inputs
         if not image_url.strip():
             raise ValueError("Image URL cannot be empty")
         if not prompt.strip():
             raise ValueError("Prompt cannot be empty")
-            
-        # Validate image URL format
-        if not (image_url.startswith('http://') or image_url.startswith('https://')):
+
+        if not (image_url.startswith("http://") or image_url.startswith("https://")):
             raise ValueError("Image URL must be a valid HTTP/HTTPS URL")
 
         key = self._resolve_key(api_key)
         system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
-        
+
         url = f"{BASE_URL}/chat/completions"
         headers = {
             "Authorization": f"Bearer {key}",
@@ -463,7 +456,6 @@ class ModelScopeVLM(ModelScopeChatBase):
 
         start_time = time.time()
         try:
-            # Use longer timeout for VLM inference
             resp = requests.post(
                 url,
                 headers=headers,
@@ -494,7 +486,7 @@ class ModelScopeVLM(ModelScopeChatBase):
 
         elapsed = time.time() - start_time
         print(f"VLM inference completed in {elapsed:.1f}s")
-        
+
         return (text,)
 
 
@@ -595,7 +587,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
                         "tooltip": "ModelScope API key. If empty, reads from MODELSCOPE_API_KEY env var.",
                     },
                 ),
-            }
+            },
         }
 
     RETURN_TYPES = ("IMAGE",)
@@ -619,7 +611,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
         loras: Optional[str] = None,
     ) -> Tuple[object]:
         """Generate image using ModelScope API.
-        
+
         Args:
             model_id: ModelScope model identifier
             prompt: Text description of desired image
@@ -634,7 +626,7 @@ class ModelScopeImageGenerator(ModelScopeBase):
             
         Returns:
             tuple: Single-element tuple containing image tensor
-            
+
         Raises:
             RuntimeError: If API call or image processing fails
         """
@@ -687,7 +679,9 @@ class ModelScopeImageGenerator(ModelScopeBase):
             resp = requests.post(url, headers=headers_with_charset, data=data_bytes, timeout=60)
             resp.raise_for_status()
         except requests.RequestException as e:
-            raise RuntimeError(f"Network error calling ModelScope Image API: {e}") from e
+            raise RuntimeError(
+                f"Network error calling ModelScope Image API: {e}"
+            ) from e
 
         try:
             data = resp.json()
